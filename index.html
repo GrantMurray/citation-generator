@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Citation Generator</title>
+  <meta name="theme-color" content="#1f2a36">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Citations">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <img src="assets/images/logo-circle.png" alt="" class="topbar-logo">
+    <div class="topbar-title">
+      <h1>Violation Notice</h1>
+      <p>Lake Merwin Campers Hideaway</p>
+    </div>
+    <button type="button" id="lock-btn" class="lock-btn" hidden>Lock</button>
+  </header>
+
+  <section id="lock" class="lock" hidden>
+    <form id="lock-form" class="card lock-card">
+      <h2>Enter access code</h2>
+      <label class="field">
+        <span>Access code</span>
+        <input id="lock-code" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" required>
+      </label>
+      <label class="remember"><input type="checkbox" id="lock-remember" checked> Remember on this device</label>
+      <button type="submit" id="lock-submit">Unlock</button>
+      <p id="lock-error" class="hint warn" aria-live="polite"></p>
+    </form>
+  </section>
+
+  <form id="citation" autocomplete="off" hidden>
+    <!-- Location ------------------------------------------------------ -->
+    <section class="card" id="location-card">
+      <h2>Location</h2>
+      <label class="field">
+        <span>Block / site or address</span>
+        <input id="loc" name="Block/Site Or Address" placeholder="e.g. 4-23, Block 14 Site 7, or an address" enterkeyhint="done">
+      </label>
+      <p id="loc-status" class="hint" aria-live="polite">Type a block and site, or tap a site on the map.</p>
+
+      <div class="map-pages" id="map-pages" role="tablist" aria-label="Map pages"></div>
+      <div class="map-toolbar">
+        <span id="map-title" class="map-title"></span>
+        <div class="zoom">
+          <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+          <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+        </div>
+      </div>
+      <div class="map-viewport" id="map-viewport">
+        <div class="map-canvas" id="map-canvas">
+          <img id="map-img" alt="">
+          <div id="hotspots"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Citation details --------------------------------------------- -->
+    <section class="card">
+      <h2>Citation</h2>
+      <div class="grid g3">
+        <label class="field"><span>Citation #</span><input name="Citation Number" inputmode="numeric"></label>
+        <label class="field"><span>Date</span><input type="date" name="Date"></label>
+        <label class="field"><span>Time</span><input type="time" name="Time"></label>
+      </div>
+      <label class="field"><span>Issued by</span><input name="Issued By" autocomplete="name"></label>
+    </section>
+
+    <section class="card">
+      <h2>Responsible party</h2>
+      <label class="field"><span>Name</span><input name="Name"></label>
+      <fieldset class="checks">
+        <legend>Status</legend>
+        <label><input type="checkbox" name="Status Member"> Member</label>
+        <label><input type="checkbox" name="Status Guest"> Guest</label>
+        <label><input type="checkbox" name="Status Contractor"> Contractor</label>
+        <label><input type="checkbox" name="Status Vendor"> Vendor</label>
+      </fieldset>
+    </section>
+
+    <section class="card">
+      <h2>Violation category</h2>
+      <fieldset class="checks cols">
+        <legend class="sr-only">Violation category</legend>
+        <label><input type="checkbox" name="Category General"> General</label>
+        <label><input type="checkbox" name="Category Vehicle/Traffic"> Vehicle/Traffic</label>
+        <label><input type="checkbox" name="Category Waterfront/Moorage"> Waterfront/Moorage</label>
+        <label><input type="checkbox" name="Category Tree/Greenspace"> Tree/Greenspace</label>
+        <label><input type="checkbox" name="Category Noise/Nuisance"> Noise/Nuisance</label>
+        <label><input type="checkbox" name="Category Garbage/Littering"> Garbage/Littering</label>
+        <label><input type="checkbox" name="Category Camp Endangerment"> Camp Endangerment</label>
+        <label><input type="checkbox" name="Category Campsite Usage"> Campsite Usage</label>
+        <label><input type="checkbox" name="Category Acts of Deception"> Acts of Deception</label>
+        <label><input type="checkbox" name="Category Other"> Other</label>
+      </fieldset>
+      <label class="field"><span>Other (describe)</span><input name="Category Other Text" data-checks="Category Other"></label>
+    </section>
+
+    <section class="card">
+      <h2>Rule / fine</h2>
+      <div class="grid g2">
+        <label class="field"><span>Item #</span><input name="Item Number"></label>
+        <label class="field"><span>Fine amount ($)</span><input name="Fine Amount" inputmode="decimal"></label>
+      </div>
+      <fieldset class="checks">
+        <legend class="sr-only">Outcome</legend>
+        <label><input type="checkbox" name="Outcome Warning"> Warning</label>
+        <label><input type="checkbox" name="Outcome Fine Issued"> Fine issued</label>
+        <label><input type="checkbox" name="Outcome Suspension Review"> Suspension review</label>
+        <label><input type="checkbox" name="Outcome Corrective Action Required"> Corrective action required</label>
+      </fieldset>
+    </section>
+
+    <section class="card">
+      <h2>Vehicle / watercraft <small>optional</small></h2>
+      <div class="grid g2">
+        <label class="field"><span>Vehicle make/model</span><input name="Vehicle Make Model"></label>
+        <label class="field"><span>Vehicle lic #</span><input name="Vehicle License" autocapitalize="characters"></label>
+        <label class="field"><span>Vehicle location</span><input name="Vehicle Location"></label>
+        <label class="field"><span>Watercraft / slip #</span><input name="Watercraft Slip"></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Description of violation</h2>
+      <label class="field">
+        <span class="sr-only">Description</span>
+        <textarea name="Description of Violation" rows="4"></textarea>
+      </label>
+      <p class="hint" id="desc-hint">Fits about 270 characters at normal size; longer text prints smaller.</p>
+      <div class="grid g2">
+        <label class="field"><span>Incident report attached <small>optional</small></span><input name="Incident Report Attached" placeholder="Report # or reference"></label>
+        <fieldset class="checks">
+          <legend>Pictures attached</legend>
+          <label><input type="radio" name="Pictures Attached" value="Yes"> Yes</label>
+          <label><input type="radio" name="Pictures Attached" value="No"> No</label>
+        </fieldset>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Action required</h2>
+      <fieldset class="checks cols">
+        <legend class="sr-only">Action required</legend>
+        <label><input type="checkbox" name="Action Contact Office"> Contact office</label>
+        <label><input type="checkbox" name="Action Correct Violation"> Correct violation</label>
+        <label><input type="checkbox" name="Action Remove Vehicle"> Remove vehicle</label>
+        <label><input type="checkbox" name="Action Cease Activity"> Cease activity</label>
+        <label><input type="checkbox" name="Action Remove Watercraft"> Remove watercraft</label>
+        <label><input type="checkbox" name="Action Submit Plan"> Submit plan</label>
+        <label><input type="checkbox" name="Action Other"> Other</label>
+      </fieldset>
+      <label class="field"><span>Other (describe)</span><input name="Action Other Text" data-checks="Action Other"></label>
+      <label class="field"><span>Corrective action required by</span><input type="date" name="Corrective Action Required By"></label>
+    </section>
+
+    <section class="card">
+      <h2>Signatures</h2>
+      <p class="hint">Leave blank to sign the printed copy by hand.</p>
+      <label class="field"><span>Member signature</span><input name="Member Signature"></label>
+      <fieldset class="checks">
+        <legend class="sr-only">Refused</legend>
+        <label><input type="checkbox" name="Refused Signature"> Refused signature</label>
+      </fieldset>
+      <label class="field"><span>Staff/volunteer name/signature</span><input name="Staff Volunteer Name Signature"></label>
+    </section>
+
+    <div class="actions">
+      <button type="button" id="new-btn" class="secondary">New citation</button>
+      <button type="submit" id="pdf-btn">Create PDF</button>
+    </div>
+    <p id="pdf-status" class="hint center" aria-live="polite"></p>
+    <div id="pdf-result" class="pdf-result" hidden>
+      <button type="button" id="share-btn" hidden>Share / Print / Save</button>
+      <a id="download-link" class="button secondary">Download</a>
+      <a id="open-link" class="button secondary" target="_blank" rel="noopener">Open</a>
+    </div>
+    <p id="offline-status" class="hint center"></p>
+  </form>
+
+  <script src="vendor/pdf-lib.min.js"></script>
+  <script src="src/vault.js"></script>
+  <script src="src/fill.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>
