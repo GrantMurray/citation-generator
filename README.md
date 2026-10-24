@@ -101,3 +101,5 @@ fractions of the full map page, so they stay valid at any render resolution.
 - The next citation number and the "Issued by" name are remembered per browser
   (localStorage). Two devices will hand out the same numbers. Drawn
   signatures are never saved on the device (not even in the draft).
+- The sun/moon button switches light and dark mode. It follows the device
+  setting until used, then remembers the choice on that device.

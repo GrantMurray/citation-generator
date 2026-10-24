@@ -5,7 +5,7 @@ const TEMPLATE_PATH = "assets/forms/citation_fillable.pdf";
 const SITES_PATH = "assets/data/numbers.csv";
 const BUNDLE_URL = "assets/locked/bundle.bin";
 const ZOOMS = [1, 1.5, 2, 3, 4];
-const STORE = { issuedBy: "cg.issuedBy", next: "cg.nextCitation", draft: "cg.draft" };
+const STORE = { issuedBy: "cg.issuedBy", next: "cg.nextCitation", draft: "cg.draft", theme: "cg.theme" };
 const DEFAULT_NEXT = "260167"; // the scanned original was 260166
 
 const $ = (sel) => document.querySelector(sel);
@@ -667,6 +667,33 @@ function lockApp() {
   location.reload();
 }
 
+// ---- Light / dark theme --------------------------------------------------
+// Follows the device setting until the switch is used; the choice is then
+// kept on this device (index.html applies it before the page paints).
+
+const SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>';
+const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+const currentTheme = () => document.documentElement.dataset.theme || (systemDark.matches ? "dark" : "light");
+
+function showThemeButton() {
+  const dark = currentTheme() === "dark";
+  const btn = $("#theme-btn");
+  btn.innerHTML = dark ? SUN : MOON;
+  btn.title = btn.ariaLabel = dark ? "Switch to light mode" : "Switch to dark mode";
+}
+
+function setUpThemeSwitch() {
+  $("#theme-btn").addEventListener("click", () => {
+    const next = currentTheme() === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    store.set(STORE.theme, next);
+    showThemeButton();
+  });
+  systemDark.addEventListener("change", showThemeButton);
+  showThemeButton();
+}
+
 // ---- Startup ---------------------------------------------------------------
 
 function start() {
@@ -691,6 +718,7 @@ function start() {
 }
 
 async function init() {
+  setUpThemeSwitch();
   wire();
   $("#lock-form").addEventListener("submit", onUnlockSubmit);
   $("#lock-btn").addEventListener("click", lockApp);
