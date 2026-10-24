@@ -191,7 +191,7 @@ function pickSite(s, { fromTyping = false } = {}) {
   if (fromTyping && narrowScreen() && zoomIndex < 3) setZoom(3);
   showPage(s.page, { focusSite: fromTyping ? s : null });
   syncVehicleLocation();
-  saveDraft();
+  changed();
 }
 
 function onLocationTyped() {
@@ -252,9 +252,8 @@ function bumpCitation(used) {
 function applyDefaults() {
   fillNow();
   field("Citation Number").value = nextCitation();
-  const issuer = store.get(STORE.issuedBy) || "";
-  field("Issued By").value = issuer;
-  field("Staff Volunteer Name Signature").value = issuer;
+  field("Issued By").value = store.get(STORE.issuedBy) || "";
+  clearSignatures();
 }
 
 // ---- Form values ---------------------------------------------------------
@@ -287,12 +286,18 @@ function collectValues() {
 function saveDraft() {
   const raw = {};
   for (const el of form.elements) {
-    if (!el.name) continue;
+    if (!el.name || el.type === "hidden") continue; // signatures stay off the device
     if (el.type === "checkbox") raw[el.name] = el.checked;
     else if (el.type === "radio") { if (el.checked) raw[el.name] = el.value; }
     else raw[el.name] = el.value;
   }
   store.set(STORE.draft, JSON.stringify(raw));
+}
+
+// Called whenever the citation changes: keep the draft and the PDF current.
+function changed() {
+  saveDraft();
+  schedulePdf();
 }
 
 function restoreDraft() {
@@ -316,7 +321,7 @@ function newCitation() {
   applyDefaults();
   onLocationTyped();
   updateDescHint();
-  $("#pdf-status").textContent = "";
+  schedulePdf();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -329,24 +334,176 @@ function updateDescHint() {
   el.className = `hint ${n > 270 ? "warn" : ""}`;
 }
 
+// ---- Signature pads ------------------------------------------------------
+// Each .sig box holds a canvas to sign on and a hidden input that keeps the
+// strokes, cropped to the ink, as a PNG data URL; fill.js stamps it on the
+// PDF. Signatures are never saved on the device, not even in the draft.
+
+const SIG_INK = "#1b2f6b";
+const sigPads = [];
+
+function makeSignaturePad(box) {
+  const canvas = box.querySelector("canvas");
+  const input = field(box.dataset.input);
+  const ctx = canvas.getContext("2d");
+  let last = null, lastMid = null, width = 2.5, lastTime = 0;
+
+  function clear() {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  // Redraws the current signature, scaled to fit (after a resize or reset).
+  function show() {
+    clear();
+    const url = input.value;
+    if (!url || !canvas.width) return;
+    const img = new Image();
+    img.onload = () => {
+      if (input.value !== url) return;
+      const dpr = window.devicePixelRatio || 1;
+      const cw = canvas.width / dpr, ch = canvas.height / dpr;
+      const k = Math.min((cw - 16) / img.width, (ch - 16) / img.height, 1 / dpr);
+      const iw = img.width * k, ih = img.height * k;
+      ctx.drawImage(img, (cw - iw) / 2, (ch - ih) / 2, iw, ih);
+    };
+    img.src = url;
+  }
+
+  function resize() {
+    const r = canvas.getBoundingClientRect();
+    if (!r.width) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(r.width * dpr);
+    canvas.height = Math.round(r.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    show();
+  }
+
+  // PNG of just the inked area (plus a little margin), or "" if blank.
+  function cropped() {
+    const { width: w, height: h } = canvas;
+    const data = ctx.getImageData(0, 0, w, h).data;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (data[(y * w + x) * 4 + 3] > 8) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    if (x1 < 0) return "";
+    const m = 4;
+    x0 = Math.max(0, x0 - m); y0 = Math.max(0, y0 - m);
+    x1 = Math.min(w - 1, x1 + m); y1 = Math.min(h - 1, y1 + m);
+    const out = document.createElement("canvas");
+    out.width = x1 - x0 + 1;
+    out.height = y1 - y0 + 1;
+    out.getContext("2d").drawImage(canvas, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+    return out.toDataURL("image/png");
+  }
+
+  const point = (e) => {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+  // Faster strokes draw thinner, like a real pen; a stylus uses pressure.
+  const penWidth = (e, p, t) => {
+    let target;
+    if (e.pointerType === "pen" && e.pressure > 0) target = 1 + e.pressure * 3;
+    else {
+      const speed = Math.hypot(p.x - last.x, p.y - last.y) / Math.max(1, t - lastTime);
+      target = Math.min(3.4, Math.max(1.1, 3.4 - speed * 1.1));
+    }
+    return (width = width * 0.7 + target * 0.3);
+  };
+
+  canvas.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    last = lastMid = point(e);
+    lastTime = e.timeStamp;
+    width = 2.5;
+    ctx.fillStyle = SIG_INK;
+    ctx.beginPath();
+    ctx.arc(last.x, last.y, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!last) return;
+    for (const ev of e.getCoalescedEvents ? e.getCoalescedEvents() : [e]) {
+      const p = point(ev);
+      const mid = { x: (last.x + p.x) / 2, y: (last.y + p.y) / 2 };
+      ctx.strokeStyle = SIG_INK;
+      ctx.lineCap = ctx.lineJoin = "round";
+      ctx.lineWidth = penWidth(ev, p, ev.timeStamp);
+      ctx.beginPath();
+      ctx.moveTo(lastMid.x, lastMid.y);
+      ctx.quadraticCurveTo(last.x, last.y, mid.x, mid.y);
+      ctx.stroke();
+      last = p; lastMid = mid; lastTime = ev.timeStamp;
+    }
+  });
+  const end = () => {
+    if (!last) return;
+    last = lastMid = null;
+    input.value = cropped();
+    changed();
+  };
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+
+  box.querySelector(".sig-clear").addEventListener("click", () => {
+    input.value = "";
+    clear();
+    changed();
+  });
+  new ResizeObserver(resize).observe(canvas);
+  return { reset() { input.value = ""; clear(); } };
+}
+
+function setUpSignaturePads() {
+  store.del("cg.staffSig"); // saved by an earlier version
+  for (const box of form.querySelectorAll(".sig")) sigPads.push(makeSignaturePad(box));
+}
+
+const clearSignatures = () => sigPads.forEach((p) => p.reset());
+
 // ---- PDF -----------------------------------------------------------------
 
 let templateBytes = null;
 let lastUrl = null;
 let lastFile = null;
+let lastValues = null;
 
 // Phones and tablets get a share sheet (Save to Files, Print, AirDrop...);
 // downloads from an installed iOS web app are unreliable.
 const touchDevice = () => window.matchMedia("(pointer: coarse)").matches;
 const canShareFile = (file) => !!(navigator.canShare && navigator.canShare({ files: [file] }));
 
-async function createPdf(e) {
-  e.preventDefault();
-  const btn = $("#pdf-btn");
+// The PDF is rebuilt shortly after every change, so Download / Share / Open
+// always hand out the current citation. Builds never overlap; changes made
+// during one trigger another when it finishes.
+const PDF_DELAY = 250;
+let pdfTimer = null, building = false, dirty = false;
+
+function schedulePdf() {
+  dirty = true;
+  form.classList.add("stale");
+  clearTimeout(pdfTimer);
+  pdfTimer = setTimeout(buildPdf, PDF_DELAY);
+}
+
+async function buildPdf() {
+  if (building) return;
+  building = true;
+  dirty = false;
   const status = $("#pdf-status");
-  btn.disabled = true;
-  $("#pdf-result").hidden = true;
-  status.textContent = "Creating PDF…";
   try {
     templateBytes ||= Vault.bytes(TEMPLATE_PATH);
     const values = collectValues();
@@ -355,39 +512,47 @@ async function createPdf(e) {
     const num = values["Citation Number"] || "draft";
     const where = picked ? `-B${picked.block}-S${picked.site}` : "";
     const name = `citation-${num}${where}.pdf`;
+    lastValues = values;
     lastFile = new File([bytes], name, { type: "application/pdf" });
     if (lastUrl) URL.revokeObjectURL(lastUrl);
     lastUrl = URL.createObjectURL(lastFile);
 
-    const dl = $("#download-link");
-    dl.href = lastUrl;
-    dl.download = name;
-    $("#open-link").href = lastUrl;
-    const share = canShareFile(lastFile);
-    $("#share-btn").hidden = !share;
-    $("#pdf-result").hidden = false;
-
-    if (share && touchDevice()) {
-      status.textContent = `${name} is ready. Print at actual size (100%).`;
-    } else {
-      dl.click();
-      status.textContent = `Downloaded ${name}. Print at actual size (100%).`;
+    for (const dl of [$("#download-main"), $("#download-link")]) {
+      dl.href = lastUrl;
+      dl.download = name;
     }
-
-    if (values["Issued By"]) store.set(STORE.issuedBy, values["Issued By"]);
-    bumpCitation(values["Citation Number"]);
+    $("#open-link").href = lastUrl;
+    // The bottom bar offers one main action: the share sheet on phones and
+    // tablets, a download elsewhere. The rest sit under the status line.
+    const share = canShareFile(lastFile) && touchDevice();
+    $("#share-btn").hidden = !share;
+    $("#download-main").hidden = share;
+    $("#download-link").hidden = !share;
+    $("#pdf-result").hidden = false;
+    status.textContent = `${name} is up to date. Print at actual size (100%).`;
   } catch (err) {
     console.error(err);
-    status.textContent = `Couldn't create the PDF: ${err.message}`;
+    status.textContent = `Couldn't update the PDF: ${err.message}`;
   } finally {
-    btn.disabled = false;
+    building = false;
+    if (dirty) schedulePdf();
+    else form.classList.remove("stale");
   }
+}
+
+// Once the PDF has been handed out, remember the issuer and move on to the
+// next citation number for the next "New citation".
+function pdfUsed() {
+  if (!lastValues) return;
+  if (lastValues["Issued By"]) store.set(STORE.issuedBy, lastValues["Issued By"]);
+  bumpCitation(lastValues["Citation Number"]);
 }
 
 async function sharePdf() {
   if (!lastFile) return;
   try {
     await navigator.share({ files: [lastFile], title: lastFile.name });
+    pdfUsed();
   } catch (err) {
     if (err.name !== "AbortError") $("#pdf-status").textContent = `Couldn't share: ${err.message}`;
   }
@@ -419,7 +584,7 @@ async function setUpOffline() {
 function wire() {
   const loc = field("Block/Site Or Address");
   loc.addEventListener("input", onLocationTyped);
-  loc.addEventListener("change", () => { if (picked) loc.value = siteText(picked); saveDraft(); });
+  loc.addEventListener("change", () => { if (picked) loc.value = siteText(picked); changed(); });
   loc.addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); loc.dispatchEvent(new Event("change")); loc.blur(); }
   });
@@ -448,17 +613,16 @@ function wire() {
   for (const n of ["Category Vehicle/Traffic", "Vehicle Make Model", "Vehicle License"]) {
     field(n).addEventListener(n.startsWith("Category") ? "change" : "input", syncVehicleLocation);
   }
-  field("Issued By").addEventListener("change", (e) => {
-    const staff = field("Staff Volunteer Name Signature");
-    const prev = store.get(STORE.issuedBy) || "";
-    if (!staff.value.trim() || staff.value === prev) staff.value = e.target.value;
-  });
+  setUpSignaturePads();
   field("Description of Violation").addEventListener("input", updateDescHint);
 
-  form.addEventListener("input", saveDraft);
-  form.addEventListener("change", saveDraft);
-  form.addEventListener("submit", createPdf);
+  form.addEventListener("input", changed);
+  form.addEventListener("change", changed);
+  form.addEventListener("submit", (e) => e.preventDefault());
   $("#share-btn").addEventListener("click", sharePdf);
+  $("#download-main").addEventListener("click", pdfUsed);
+  $("#download-link").addEventListener("click", pdfUsed);
+  $("#open-link").addEventListener("click", pdfUsed);
   $("#new-btn").addEventListener("click", () => {
     if (confirm("Clear this citation and start a new one?")) newCitation();
   });
@@ -516,12 +680,14 @@ function start() {
   } catch (err) {
     console.error(err);
     setStatus("Couldn't load the site list. You can still type a location.", "warn");
+    schedulePdf();
     return;
   }
   renderPageTabs();
   showPage(pages[0].page);
   setZoom(narrowScreen() ? 3 : 0);
   if (field("Block/Site Or Address").value) onLocationTyped();
+  schedulePdf();
 }
 
 async function init() {

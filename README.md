@@ -49,7 +49,7 @@ install it once while connected.
 
 Open it once from the home screen while still connected. When the bottom of
 the page says "✓ Available offline", it will work with no signal. On phones
-and tablets, **Share / Print / Save** after creating a PDF opens the system
+and tablets, **Share / Print / Save** opens the system
 share sheet (Save to Files, Print, AirDrop, email…).
 
 **Updating:** deploy the new files. Each device picks up the change the next
@@ -99,4 +99,5 @@ fractions of the full map page, so they stay valid at any render resolution.
 ## Notes
 
 - The next citation number and the "Issued by" name are remembered per browser
-  (localStorage). Two devices will hand out the same numbers.
+  (localStorage). Two devices will hand out the same numbers. Drawn
+  signatures are never saved on the device (not even in the draft).

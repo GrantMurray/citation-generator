@@ -165,23 +165,33 @@
     <section class="card">
       <h2>Signatures</h2>
       <p class="hint">Leave blank to sign the printed copy by hand.</p>
-      <label class="field"><span>Member signature</span><input name="Member Signature"></label>
+      <div class="field sig" data-input="Member Signature Drawing">
+        <span id="member-sig-label">Member signature <small>— sign with a finger or stylus</small></span>
+        <canvas class="sig-pad" role="img" aria-labelledby="member-sig-label"></canvas>
+        <input type="hidden" name="Member Signature Drawing">
+        <button type="button" class="link-btn sig-clear">Clear signature</button>
+      </div>
       <fieldset class="checks">
         <legend class="sr-only">Refused</legend>
         <label><input type="checkbox" name="Refused Signature"> Refused signature</label>
       </fieldset>
-      <label class="field"><span>Staff/volunteer name/signature</span><input name="Staff Volunteer Name Signature"></label>
+      <div class="field sig" data-input="Staff Signature Drawing">
+        <span id="staff-sig-label">Staff/volunteer signature <small>— sign with a finger or stylus</small></span>
+        <canvas class="sig-pad" role="img" aria-labelledby="staff-sig-label"></canvas>
+        <input type="hidden" name="Staff Signature Drawing">
+        <button type="button" class="link-btn sig-clear">Clear signature</button>
+      </div>
     </section>
 
     <div class="actions">
       <button type="button" id="new-btn" class="secondary">New citation</button>
-      <button type="submit" id="pdf-btn">Create PDF</button>
+      <button type="button" id="share-btn" class="pdf-action" hidden>Share / Print / Save</button>
+      <a id="download-main" class="button pdf-action" hidden>Download PDF</a>
     </div>
     <p id="pdf-status" class="hint center" aria-live="polite"></p>
     <div id="pdf-result" class="pdf-result" hidden>
-      <button type="button" id="share-btn" hidden>Share / Print / Save</button>
-      <a id="download-link" class="button secondary">Download</a>
-      <a id="open-link" class="button secondary" target="_blank" rel="noopener">Open</a>
+      <a id="download-link" class="button secondary pdf-action">Download</a>
+      <a id="open-link" class="button secondary pdf-action" target="_blank" rel="noopener">Open</a>
     </div>
     <p id="offline-status" class="hint center"></p>
   </form>

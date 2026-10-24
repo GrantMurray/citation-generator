@@ -3,9 +3,21 @@
 // (checkboxes), or an export value (the "Pictures Attached" radio group).
 // "Description of Violation" is special: it is wrapped across the form's
 // three ruled "Description Line N" fields, shrinking the text if needed.
+// "Member Signature Drawing" and "Staff Signature Drawing" are PNGs (data
+// URLs or bytes) of drawn signatures, stamped on their signature lines.
 (function (root) {
   const DESC_LINES = ["Description Line 1", "Description Line 2", "Description Line 3"];
   const MIN_DESC_SIZE = 3.5;
+  const SIGNATURES = {
+    "Member Signature Drawing": "Member Signature",
+    "Staff Signature Drawing": "Staff Volunteer Name Signature",
+  };
+  const SIG_MAX_HEIGHT = 16; // points; rises above the line like a real signature
+
+  function fontSize(field, fallback) {
+    const da = field.acroField.getDefaultAppearance() || "";
+    return parseFloat((da.match(/([\d.]+)\s+Tf/) || [])[1]) || fallback;
+  }
 
   function wrap(text, font, size, width) {
     const lines = [];
@@ -29,8 +41,7 @@
     const fields = DESC_LINES.map((n) => form.getTextField(n));
     const widget = fields[0].acroField.getWidgets()[0];
     const width = widget.getRectangle().width - 4;
-    const da = fields[0].acroField.getDefaultAppearance() || "";
-    let size = parseFloat((da.match(/([\d.]+)\s+Tf/) || [])[1]) || 6;
+    let size = fontSize(fields[0], 6);
 
     let lines = wrap(text, font, size, width);
     while (lines.length > fields.length && size > MIN_DESC_SIZE) {
@@ -44,6 +55,15 @@
       f.setFontSize(size);
       f.setText(lines[i] || "");
     });
+  }
+
+  async function drawSignature(pdf, form, fieldName, png) {
+    const field = form.getTextField(fieldName);
+    const r = field.acroField.getWidgets()[0].getRectangle();
+    const x = r.x + 2;
+    const img = await pdf.embedPng(png);
+    const k = Math.min((r.width - 2) / img.width, SIG_MAX_HEIGHT / img.height);
+    pdf.getPage(0).drawImage(img, { x, y: r.y - 1.5, width: img.width * k, height: img.height * k });
   }
 
   async function fillCitation(PDFLib, templateBytes, values) {
@@ -68,6 +88,9 @@
     }
 
     form.updateFieldAppearances(helvetica);
+    for (const [key, fieldName] of Object.entries(SIGNATURES)) {
+      if (values[key]) await drawSignature(pdf, form, fieldName, values[key]);
+    }
     return pdf.save();
   }
 
