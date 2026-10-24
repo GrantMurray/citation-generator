@@ -4,9 +4,11 @@
 const TEMPLATE_PATH = "assets/forms/citation_fillable.pdf";
 const SITES_PATH = "assets/data/numbers.csv";
 const BUNDLE_URL = "assets/locked/bundle.bin";
-const ZOOMS = [1, 1.5, 2, 3, 4];
-const STORE = { issuedBy: "cg.issuedBy", next: "cg.nextCitation", draft: "cg.draft", theme: "cg.theme" };
-const DEFAULT_NEXT = "260167"; // the scanned original was 260166
+const STORE = {
+  issuedBy: "cg.issuedBy", next: "cg.nextCitation", draft: "cg.draft", theme: "cg.theme",
+  deviceCode: "cg.deviceCode",
+};
+const DEFAULT_NEXT = "100000"; // where a new device starts counting
 
 const $ = (sel) => document.querySelector(sel);
 const form = $("#citation");
@@ -88,8 +90,17 @@ function parseLocation(text) {
 // ---- Map ---------------------------------------------------------------
 
 let currentPage = null;
-let zoomIndex = 0;
 let picked = null;
+
+const MAX_ZOOM = 8;
+const TAP_RADIUS = 22; // px on screen around a tap that counts as "on" a site
+const mapVp = $("#map-viewport");
+const mapCanvas = $("#map-canvas");
+const mapImg = $("#map-img");
+// The canvas is laid out at "fit" size (the whole block visible) and then
+// scaled by view.s and moved by view.x/y, in viewport pixels.
+const view = { s: 1, x: 0, y: 0 };
+let fitW = 0, fitH = 0;
 
 function renderPageTabs() {
   const wrap = $("#map-pages");
@@ -98,8 +109,8 @@ function renderPageTabs() {
     const b = document.createElement("button");
     b.type = "button";
     b.role = "tab";
-    b.textContent = p.label.replace("Block ", "");
-    b.title = p.label;
+    b.textContent = p.page;
+    b.title = b.ariaLabel = p.label;
     b.dataset.page = p.page;
     b.addEventListener("click", () => showPage(p.page));
     wrap.append(b);
@@ -111,9 +122,8 @@ function showPage(page, { focusSite } = {}) {
   if (!p) return;
   if (currentPage !== p) {
     currentPage = p;
-    $("#map-title").textContent = p.label;
-    $("#map-img").src = Vault.url(`assets/maps/pages/${p.image}`);
-    $("#map-img").alt = `${p.label} site map`;
+    mapImg.src = Vault.url(`assets/maps/pages/${p.image}`);
+    mapImg.alt = `${p.label} site map`;
     const layer = $("#hotspots");
     layer.innerHTML = "";
     for (const s of p.sites) {
@@ -122,56 +132,183 @@ function showPage(page, { focusSite } = {}) {
       b.className = "site";
       b.dataset.key = siteKey(s.block, s.site);
       b.setAttribute("aria-label", siteText(s));
-      b.title = siteText(s);
       Object.assign(b.style, {
         left: `${s.left * 100}%`, top: `${s.top * 100}%`,
         width: `${s.width * 100}%`, height: `${s.height * 100}%`,
       });
-      b.addEventListener("click", () => pickSite(s));
+      b.addEventListener("click", () => pickSite(s)); // keyboard
       layer.append(b);
     }
-    for (const tab of $("#map-pages").children) {
-      const on = tab.dataset.page === page;
-      tab.setAttribute("aria-selected", on);
-      if (on) tab.scrollIntoView({ block: "nearest", inline: "nearest" });
-    }
+    for (const tab of $("#map-pages").children) tab.setAttribute("aria-selected", tab.dataset.page === page);
+    setView(1, 0, 0);
   }
   markPicked();
-  if (focusSite) scrollToSite(focusSite);
+  if (focusSite) {
+    const go = () => focusOn(focusSite);
+    mapImg.complete ? go() : mapImg.addEventListener("load", go, { once: true });
+  }
 }
 
 function markPicked() {
   const key = picked && siteKey(picked.block, picked.site);
   for (const b of $("#hotspots").children) b.classList.toggle("picked", b.dataset.key === key);
+  const onPage = picked && currentPage && picked.page === currentPage.page;
+  const pin = $("#map-pin");
+  pin.hidden = !onPage;
+  if (onPage) {
+    pin.style.left = `${(picked.left + picked.width / 2) * 100}%`;
+    pin.style.top = `${(picked.top + picked.height / 2) * 100}%`;
+  }
+  const title = $("#map-title");
+  title.textContent = currentPage ? currentPage.label : "";
+  if (onPage) {
+    const small = document.createElement("small");
+    small.textContent = ` · Site ${picked.label || picked.site}`;
+    title.append(small);
+  }
 }
 
-function scrollToSite(s) {
-  const vp = $("#map-viewport");
-  const canvas = $("#map-canvas");
-  const go = () => {
-    const x = (s.left + s.width / 2) * canvas.clientWidth - vp.clientWidth / 2;
-    const y = (s.top + s.height / 2) * canvas.clientHeight - vp.clientHeight / 2;
-    vp.scrollTo({ left: Math.max(0, x), top: Math.max(0, y), behavior: "smooth" });
+// Size the canvas so the whole block fits the viewport, keeping the point
+// at the centre of the view where it was.
+function layoutMap() {
+  const vw = mapVp.clientWidth, vh = mapVp.clientHeight;
+  if (!vw || !vh) return;
+  const aspect = mapImg.naturalWidth ? mapImg.naturalWidth / mapImg.naturalHeight : 2200 / 1700;
+  const cx = fitW ? (vw / 2 - view.x) / (fitW * view.s) : 0.5;
+  const cy = fitH ? (vh / 2 - view.y) / (fitH * view.s) : 0.5;
+  fitW = Math.min(vw, vh * aspect);
+  fitH = fitW / aspect;
+  mapCanvas.style.width = `${fitW}px`;
+  setView(view.s, vw / 2 - cx * fitW * view.s, vh / 2 - cy * fitH * view.s);
+}
+
+function setView(s, x, y, animate = false) {
+  const vw = mapVp.clientWidth, vh = mapVp.clientHeight;
+  s = Math.max(1, Math.min(MAX_ZOOM, s));
+  const w = fitW * s, h = fitH * s;
+  // Centre the map when it is smaller than the viewport; otherwise keep
+  // its edges from coming inside the viewport.
+  x = w <= vw ? (vw - w) / 2 : Math.min(0, Math.max(vw - w, x));
+  y = h <= vh ? (vh - h) / 2 : Math.min(0, Math.max(vh - h, y));
+  Object.assign(view, { s, x, y });
+  mapCanvas.classList.toggle("animate", animate);
+  mapCanvas.style.transform = `translate(${x}px, ${y}px) scale(${s})`;
+  mapCanvas.style.setProperty("--inv", 1 / s);
+  mapVp.classList.toggle("zoomed", s > 1.01);
+  $("#zoom-out").disabled = s <= 1.01;
+  $("#zoom-in").disabled = s >= MAX_ZOOM - 0.01;
+}
+
+// Zoom to scale s, keeping viewport point (px, py) over the same spot.
+function zoomAt(s, px, py, animate = false) {
+  const nx = (px - view.x) / view.s, ny = (py - view.y) / view.s;
+  s = Math.max(1, Math.min(MAX_ZOOM, s));
+  setView(s, px - nx * s, py - ny * s, animate);
+}
+
+const zoomBy = (k) => zoomAt(view.s * k, mapVp.clientWidth / 2, mapVp.clientHeight / 2, true);
+
+function focusOn(site) {
+  const s = Math.max(view.s, 4);
+  const cx = (site.left + site.width / 2) * fitW * s, cy = (site.top + site.height / 2) * fitH * s;
+  setView(s, mapVp.clientWidth / 2 - cx, mapVp.clientHeight / 2 - cy, true);
+}
+
+// A tap picks the nearest site if it is clearly the one meant; when several
+// are close together it zooms in on them instead.
+function onMapTap(px, py) {
+  if (!currentPage || !fitW) return;
+  const w = fitW * view.s, h = fitH * view.s;
+  const near = currentPage.sites
+    .map((s) => ({ s, d: Math.hypot((s.left + s.width / 2) * w + view.x - px, (s.top + s.height / 2) * h + view.y - py) }))
+    .sort((a, b) => a.d - b.d);
+  const [first, second] = near;
+  if (!first || first.d > TAP_RADIUS * 3) return;
+  const clear = !second || second.d > Math.max(TAP_RADIUS, first.d * 1.8);
+  if (first.d <= TAP_RADIUS && (clear || view.s >= MAX_ZOOM - 0.01)) pickSite(first.s);
+  else zoomAt(view.s * 2.5, px, py, true);
+}
+
+function setUpMapGestures() {
+  const pts = new Map();
+  let drag = null, pinch = null;
+  const local = (e) => {
+    const r = mapVp.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
-  const img = $("#map-img");
-  img.complete ? go() : img.addEventListener("load", go, { once: true });
+  const startPinch = () => {
+    const [a, b] = [...pts.values()];
+    pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, ...view };
+    drag = null;
+  };
+
+  mapVp.addEventListener("pointerdown", (e) => {
+    if (e.button > 0) return;
+    try { mapVp.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+    pts.set(e.pointerId, local(e));
+    if (pts.size === 1) {
+      const p = local(e);
+      drag = { px: p.x, py: p.y, x: view.x, y: view.y, moved: false };
+    } else if (pts.size === 2) startPinch();
+  });
+  mapVp.addEventListener("pointermove", (e) => {
+    if (!pts.has(e.pointerId)) return;
+    const p = local(e);
+    pts.set(e.pointerId, p);
+    if (pinch && pts.size >= 2) {
+      const [a, b] = [...pts.values()];
+      const s = Math.max(1, Math.min(MAX_ZOOM, pinch.s * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d));
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      // keep the map point that was under the fingers' midpoint under it
+      setView(s, mx - (pinch.mx - pinch.x) / pinch.s * s, my - (pinch.my - pinch.y) / pinch.s * s);
+    } else if (drag) {
+      const dx = p.x - drag.px, dy = p.y - drag.py;
+      if (!drag.moved && Math.hypot(dx, dy) > 6) {
+        drag.moved = true;
+        mapVp.classList.add("dragging");
+      }
+      if (drag.moved) setView(view.s, drag.x + dx, drag.y + dy);
+    }
+  });
+  const end = (e, cancelled) => {
+    if (!pts.has(e.pointerId)) return;
+    const p = local(e);
+    pts.delete(e.pointerId);
+    if (drag && !drag.moved && !cancelled && pts.size === 0) onMapTap(p.x, p.y);
+    if (pinch && pts.size === 1) {
+      // carry on as a drag with the remaining finger, without tapping
+      const [q] = pts.values();
+      drag = { px: q.x, py: q.y, x: view.x, y: view.y, moved: true };
+    }
+    if (pts.size < 2) pinch = null;
+    if (pts.size === 0) { drag = null; mapVp.classList.remove("dragging"); }
+  };
+  mapVp.addEventListener("pointerup", (e) => end(e, false));
+  mapVp.addEventListener("pointercancel", (e) => end(e, true));
+  // Trackpad pinch (and ctrl + scroll wheel) zooms the map, not the page.
+  mapVp.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    const p = local(e);
+    zoomAt(view.s * Math.exp(-e.deltaY * 0.01), p.x, p.y);
+  }, { passive: false });
+
+  $("#zoom-in").addEventListener("click", () => zoomBy(2));
+  $("#zoom-out").addEventListener("click", () => zoomBy(0.5));
+  $("#zoom-fit").addEventListener("click", () => setView(1, 0, 0, true));
+  $("#map-full").addEventListener("click", () => setMapFull(!$("#map").classList.contains("full")));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && $("#map").classList.contains("full")) setMapFull(false);
+  });
+  mapImg.addEventListener("load", layoutMap);
+  new ResizeObserver(layoutMap).observe(mapVp);
 }
 
-// On phones the whole-page map is too small to tap individual sites.
-const narrowScreen = () => window.matchMedia("(max-width: 700px)").matches;
-
-function setZoom(index) {
-  const vp = $("#map-viewport");
-  const canvas = $("#map-canvas");
-  // keep the point at the centre of the viewport in place
-  const cx = (vp.scrollLeft + vp.clientWidth / 2) / canvas.clientWidth;
-  const cy = (vp.scrollTop + vp.clientHeight / 2) / canvas.clientHeight;
-  zoomIndex = Math.max(0, Math.min(ZOOMS.length - 1, index));
-  canvas.style.width = `${ZOOMS[zoomIndex] * 100}%`;
-  vp.scrollLeft = cx * canvas.clientWidth - vp.clientWidth / 2;
-  vp.scrollTop = cy * canvas.clientHeight - vp.clientHeight / 2;
-  $("#zoom-out").disabled = zoomIndex === 0;
-  $("#zoom-in").disabled = zoomIndex === ZOOMS.length - 1;
+function setMapFull(on) {
+  $("#map").classList.toggle("full", on);
+  document.body.classList.toggle("map-open", on);
+  $("#map-full").textContent = on ? "Done" : "Full screen";
+  if (!on) $("#map").scrollIntoView({ block: "nearest" });
 }
 
 // ---- Location & autofill -----------------------------------------------
@@ -188,7 +325,6 @@ function pickSite(s, { fromTyping = false } = {}) {
   picked = s;
   if (!fromTyping) field("Block/Site Or Address").value = siteText(s);
   setStatus(`${siteText(s)} on the ${pageLabel(s.page)} map.`, "ok");
-  if (fromTyping && narrowScreen() && zoomIndex < 3) setZoom(3);
   showPage(s.page, { focusSite: fromTyping ? s : null });
   syncVehicleLocation();
   changed();
@@ -251,6 +387,7 @@ function bumpCitation(used) {
 
 function applyDefaults() {
   fillNow();
+  field("Device Code").value = store.get(STORE.deviceCode) || "";
   field("Citation Number").value = nextCitation();
   field("Issued By").value = store.get(STORE.issuedBy) || "";
   clearSignatures();
@@ -507,12 +644,17 @@ async function buildPdf() {
   try {
     templateBytes ||= Vault.bytes(TEMPLATE_PATH);
     const values = collectValues();
+    // Each device has its own code, printed in front of its numbers
+    // (001-260171) so two devices never issue the same citation number.
+    const number = values["Citation Number"];
+    const code = values["Device Code"];
+    values["Citation Number"] = code && number ? `${code}-${number}` : number;
     const bytes = await window.fillCitation(PDFLib, templateBytes, values);
 
     const num = values["Citation Number"] || "draft";
     const where = picked ? `-B${picked.block}-S${picked.site}` : "";
     const name = `citation-${num}${where}.pdf`;
-    lastValues = values;
+    lastValues = { ...values, "Citation Number": number };
     lastFile = new File([bytes], name, { type: "application/pdf" });
     if (lastUrl) URL.revokeObjectURL(lastUrl);
     lastUrl = URL.createObjectURL(lastFile);
@@ -589,8 +731,7 @@ function wire() {
     if (e.key === "Enter") { e.preventDefault(); loc.dispatchEvent(new Event("change")); loc.blur(); }
   });
 
-  $("#zoom-in").addEventListener("click", () => setZoom(zoomIndex + 1));
-  $("#zoom-out").addEventListener("click", () => setZoom(zoomIndex - 1));
+  setUpMapGestures();
 
   // Typing in an "Other (describe)" box ticks its checkbox.
   for (const el of form.querySelectorAll("[data-checks]")) {
@@ -615,6 +756,12 @@ function wire() {
   }
   setUpSignaturePads();
   field("Description of Violation").addEventListener("input", updateDescHint);
+  // The device code is a setting for this device, kept as soon as it's typed.
+  field("Device Code").addEventListener("input", (e) => {
+    const el = e.target;
+    el.value = el.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    el.value ? store.set(STORE.deviceCode, el.value) : store.del(STORE.deviceCode);
+  });
 
   form.addEventListener("input", changed);
   form.addEventListener("change", changed);
@@ -712,7 +859,6 @@ function start() {
   }
   renderPageTabs();
   showPage(pages[0].page);
-  setZoom(narrowScreen() ? 3 : 0);
   if (field("Block/Site Or Address").value) onLocationTyped();
   schedulePdf();
 }

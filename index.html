@@ -52,26 +52,35 @@
       </label>
       <p id="loc-status" class="hint" aria-live="polite">Type a block and site, or tap a site on the map.</p>
 
-      <div class="map-pages" id="map-pages" role="tablist" aria-label="Map pages"></div>
-      <div class="map-toolbar">
-        <span id="map-title" class="map-title"></span>
-        <div class="zoom">
-          <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
-          <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+      <div class="map" id="map">
+        <div class="map-pages" id="map-pages" role="tablist" aria-label="Map pages"></div>
+        <div class="map-toolbar">
+          <span id="map-title" class="map-title"></span>
+          <div class="map-tools">
+            <button type="button" id="zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
+            <button type="button" id="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
+            <button type="button" id="zoom-fit" aria-label="Show whole block" title="Show whole block">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+            </button>
+            <button type="button" id="map-full" class="map-full-btn">Full screen</button>
+          </div>
         </div>
-      </div>
-      <div class="map-viewport" id="map-viewport">
-        <div class="map-canvas" id="map-canvas">
-          <img id="map-img" alt="">
-          <div id="hotspots"></div>
+        <div class="map-viewport" id="map-viewport">
+          <div class="map-canvas" id="map-canvas">
+            <img id="map-img" alt="" draggable="false">
+            <div id="hotspots"></div>
+            <div id="map-pin" class="map-pin" hidden></div>
+          </div>
         </div>
+        <p class="hint map-help">Pinch or use + to zoom, drag to move. Tap a site number to choose it.</p>
       </div>
     </section>
 
     <!-- Citation details --------------------------------------------- -->
     <section class="card">
       <h2>Citation</h2>
-      <div class="grid g3">
+      <div class="grid g4">
+        <label class="field"><span>Device code</span><input name="Device Code" maxlength="3" autocapitalize="characters" spellcheck="false" placeholder="e.g. 001"></label>
         <label class="field"><span>Citation #</span><input name="Citation Number" inputmode="numeric"></label>
         <label class="field"><span>Date</span><input type="date" name="Date"></label>
         <label class="field"><span>Time</span><input type="time" name="Time"></label>

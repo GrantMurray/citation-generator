@@ -1,8 +1,9 @@
 # Citation Generator
 
 Web app for filling out Lake Merwin Campers Hideaway violation notices. Pick a
-site on the camp map (or type it), fill in the rest, and download a 4×6
-fillable PDF.
+site on the camp map (or type it), fill in the rest, and download a 4×6 PDF.
+The PDF is flattened: answers are printed on the page, not left as editable
+form fields.
 
 ## Run
 
@@ -98,8 +99,10 @@ fractions of the full map page, so they stay valid at any render resolution.
 
 ## Notes
 
-- The next citation number and the "Issued by" name are remembered per browser
-  (localStorage). Two devices will hand out the same numbers. Drawn
+- The next citation number, the device code and the "Issued by" name are
+  remembered per browser (localStorage). Give each device its own **Device
+  code** (e.g. 001): it prints in front of the number (001-100000), so two
+  devices counting from the same number never issue the same citation. Drawn
   signatures are never saved on the device (not even in the draft).
 - The sun/moon button switches light and dark mode. It follows the device
   setting until used, then remembers the choice on that device.

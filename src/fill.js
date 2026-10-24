@@ -3,6 +3,7 @@
 // (checkboxes), or an export value (the "Pictures Attached" radio group).
 // "Description of Violation" is special: it is wrapped across the form's
 // three ruled "Description Line N" fields, shrinking the text if needed.
+// The result is flattened: answers are printed on the page, not form fields.
 // "Member Signature Drawing" and "Staff Signature Drawing" are PNGs (data
 // URLs or bytes) of drawn signatures, stamped on their signature lines.
 (function (root) {
@@ -91,6 +92,13 @@
     for (const [key, fieldName] of Object.entries(SIGNATURES)) {
       if (values[key]) await drawSignature(pdf, form, fieldName, values[key]);
     }
+    // Bake the answers into the page so the issued notice can't be edited
+    // as a form. flatten() leaves the radio group's deleted widgets in the
+    // page's annotation list, which viewers flag as a broken file; the form
+    // has no other annotations, so drop the list (and the now-empty form).
+    form.flatten();
+    pdf.getPage(0).node.delete(PDFLib.PDFName.of("Annots"));
+    pdf.catalog.delete(PDFLib.PDFName.of("AcroForm"));
     return pdf.save();
   }
 
