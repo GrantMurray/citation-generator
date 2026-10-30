@@ -108,7 +108,7 @@ fractions of the full map page, so they stay valid at any render resolution.
 - **Violation category** has two modes. *Fines list* picks a violation
   from `assets/data/fines.csv` (transcribed from the LMCH Fines & Penalties
   List) and fills in the category, item #, fine amount and description
-  (unless you've typed your own); *Manual* shows the
+  (replacing what was there); *Manual* shows the
   category boxes. Each mode keeps its own description of violation. The
   choice is remembered per device. When the list changes,
   edit `fines.csv` and re-run `tools/lock_assets.py`.

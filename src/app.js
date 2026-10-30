@@ -434,14 +434,8 @@ function pickFine() {
   for (const box of CATEGORY_BOXES) box.checked = box.name === category;
   field("Category Other Text").value = category === "Category Other" ? r.category : "";
   field("Item Number").value = r.item;
-  // Replace the description only if it's empty or still another fine's text,
-  // so anything the officer typed is kept.
-  const desc = field("Description of Violation");
-  const text = desc.value.trim();
-  if (!text || [...fines.values()].some((f) => f.description === text)) {
-    desc.value = r.description;
-    updateDescHint();
-  }
+  field("Description of Violation").value = r.description;
+  updateDescHint();
   const amount = field("Fine Amount");
   amount.value = fineAmount(r);
   setAsideAmount = "";
