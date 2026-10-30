@@ -24,7 +24,7 @@ bundle is committed — the readable files under `assets/forms/`, `assets/data/`
 and `assets/maps/` are git-ignored and stay on your machine. The code itself is
 not stored anywhere; a wrong code just fails to decrypt.
 
-**Set or change the code** (also run after changing the form, maps or CSV):
+**Set or change the code** (also run after changing the form, maps or CSVs):
 
 ```sh
 python3 tools/lock_assets.py      # prompts for the code twice
@@ -76,6 +76,7 @@ assets/
   maps/camp_map_2024.pdf        source camp map                 (local only)
   maps/pages/                   rendered block maps             (local only)
   data/numbers.csv              site positions on each block map (local only)
+  data/fines.csv                fines & penalties list           (local only)
   images/logo-circle.png        logo used on the form and in the app
   icons/                        home-screen icons (generated)
 vendor/pdf-lib.min.js       pdf-lib 1.17.1
@@ -104,5 +105,12 @@ fractions of the full map page, so they stay valid at any render resolution.
   code** (e.g. 001): it prints in front of the number (001-100000), so two
   devices counting from the same number never issue the same citation. Drawn
   signatures are never saved on the device (not even in the draft).
+- **Violation category** has two modes. *Fines list* picks a violation
+  from `assets/data/fines.csv` (transcribed from the LMCH Fines & Penalties
+  List) and fills in the category, item #, fine amount and description
+  (unless you've typed your own); *Manual* shows the
+  category boxes. Each mode keeps its own description of violation. The
+  choice is remembered per device. When the list changes,
+  edit `fines.csv` and re-run `tools/lock_assets.py`.
 - The sun/moon button switches light and dark mode. It follows the device
   setting until used, then remembers the choice on that device.

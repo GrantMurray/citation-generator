@@ -3,7 +3,7 @@
 Usage: python3 tools/lock_assets.py [--out PATH]
 Prompts for the access code (or reads LMCH_CODE from the environment).
 
-The form template, site list and map images are packed into one file and
+The form template, site list, fines list and map images are packed into one file and
 encrypted with AES-256-GCM, using a key derived from the access code with
 PBKDF2-SHA256. Only the encrypted bundle is published; the code itself is
 never stored. The browser derives the same key from the code a person types
@@ -31,7 +31,8 @@ TYPES = {".pdf": "application/pdf", ".csv": "text/csv", ".jpg": "image/jpeg", ".
 
 
 def private_files():
-    files = [ROOT / "assets/forms/citation_fillable.pdf", ROOT / "assets/data/numbers.csv"]
+    files = [ROOT / "assets/forms/citation_fillable.pdf", ROOT / "assets/data/numbers.csv",
+             ROOT / "assets/data/fines.csv"]
     files += sorted((ROOT / "assets/maps/pages").glob("*.jpg"))
     missing = [str(f.relative_to(ROOT)) for f in files if not f.exists()]
     if missing:

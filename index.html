@@ -102,6 +102,19 @@
 
     <section class="card">
       <h2>Violation category</h2>
+      <fieldset class="mode-switch" id="cat-mode" hidden>
+        <legend class="sr-only">How to fill in the violation</legend>
+        <label><input type="radio" name="Violation Mode" value="auto" checked> Fines list</label>
+        <label><input type="radio" name="Violation Mode" value="manual"> Manual</label>
+      </fieldset>
+      <div id="cat-auto" hidden>
+        <label class="field">
+          <span>Violation</span>
+          <select name="Fine Item" id="fine-item"><option value="">Choose a violation…</option></select>
+        </label>
+        <p class="hint" id="fine-hint" aria-live="polite">Fills in the category, item #, fine amount and description.</p>
+      </div>
+      <div id="cat-manual">
       <fieldset class="checks cols">
         <legend class="sr-only">Violation category</legend>
         <label><input type="checkbox" name="Category General"> General</label>
@@ -116,6 +129,7 @@
         <label><input type="checkbox" name="Category Other"> Other</label>
       </fieldset>
       <label class="field"><span>Other (describe)</span><input name="Category Other Text" data-checks="Category Other"></label>
+      </div>
     </section>
 
     <section class="card">

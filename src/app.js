@@ -3,10 +3,11 @@
 // Private files live inside the encrypted bundle (see src/vault.js).
 const TEMPLATE_PATH = "assets/forms/citation_fillable.pdf";
 const SITES_PATH = "assets/data/numbers.csv";
+const FINES_PATH = "assets/data/fines.csv";
 const BUNDLE_URL = "assets/locked/bundle.bin";
 const STORE = {
   issuedBy: "cg.issuedBy", next: "cg.nextCitation", draft: "cg.draft", theme: "cg.theme",
-  deviceCode: "cg.deviceCode",
+  deviceCode: "cg.deviceCode", violationMode: "cg.violationMode",
 };
 const DEFAULT_NEXT = "100000"; // where a new device starts counting
 
@@ -368,6 +369,136 @@ function syncVehicleLocation() {
   }
 }
 
+// ---- Fines list ------------------------------------------------------------
+// In "Fines list" mode, choosing a violation fills in its category,
+// item # and fine amount; "Manual" shows the category boxes instead.
+
+// Fines list section -> category checkbox on the form.
+const SECTION_CATEGORY = {
+  1: "General", 2: "Vehicle/Traffic", 3: "Vehicle/Traffic", 4: "Waterfront/Moorage",
+  6: "Tree/Greenspace", 7: "Noise/Nuisance", 8: "Garbage/Littering",
+  9: "Camp Endangerment", 10: "Campsite Usage", 11: "Acts of Deception",
+};
+const CATEGORY_BOXES = [...document.querySelectorAll('input[name^="Category "][type=checkbox]')];
+const fines = new Map(); // item -> row
+
+function loadFines(rows) {
+  const select = field("Fine Item");
+  let group = null;
+  for (const r of rows) {
+    if (r.item.endsWith(".0")) {
+      group = null; // header row; sections with no fines get no group
+      continue;
+    }
+    if (!group || group.dataset.section !== r.section) {
+      group = document.createElement("optgroup");
+      group.label = `${r.section}. ${r.category}`;
+      group.dataset.section = r.section;
+      select.append(group);
+    }
+    fines.set(r.item, r);
+    const desc = r.description.length > 70 ? `${r.description.slice(0, 68).trimEnd()}…` : r.description;
+    group.append(new Option(`${r.item}  ${desc}`, r.item));
+  }
+}
+
+// The amount to print, or "" when the officer has to decide it (TBD, ranges,
+// termination). Seasonal moorage fines use the citation date.
+function fineAmount(r) {
+  if (r.amount_min === "0") return ""; // n/c: warning only
+  if (r.amount_min && r.amount_min === r.amount_max) return r.amount_min;
+  if (/May.Sept/.test(r.fine) && r.amount_min && r.amount_max) {
+    const month = +(field("Date").value.split("-")[1] || new Date().getMonth() + 1);
+    return month >= 5 && month <= 9 ? r.amount_max : r.amount_min;
+  }
+  return "";
+}
+
+function showFineHint() {
+  const r = fines.get(field("Fine Item").value);
+  const el = $("#fine-hint");
+  el.classList.toggle("warn", !!r && !fineAmount(r) && r.amount_min !== "0");
+  if (!r) { el.textContent = "Fills in the category, item #, fine amount and description."; return; }
+  const parts = [`${r.item} ${r.description}`, `Fine: ${r.fine}${r.per ? ` per ${r.per}` : ""}`];
+  if (r.action) parts.push(r.action);
+  if (r.notes) parts.push(r.notes);
+  if (!fineAmount(r) && r.amount_min !== "0") parts.push("Enter the fine amount below.");
+  el.textContent = parts.join(" · ");
+}
+
+function pickFine() {
+  const r = fines.get(field("Fine Item").value);
+  showFineHint();
+  if (!r) return;
+  const category = `Category ${SECTION_CATEGORY[r.section] || "Other"}`;
+  for (const box of CATEGORY_BOXES) box.checked = box.name === category;
+  field("Category Other Text").value = category === "Category Other" ? r.category : "";
+  field("Item Number").value = r.item;
+  // Replace the description only if it's empty or still another fine's text,
+  // so anything the officer typed is kept.
+  const desc = field("Description of Violation");
+  const text = desc.value.trim();
+  if (!text || [...fines.values()].some((f) => f.description === text)) {
+    desc.value = r.description;
+    updateDescHint();
+  }
+  const amount = field("Fine Amount");
+  amount.value = fineAmount(r);
+  setAsideAmount = "";
+  if (amount.value) markFineIssued();
+  else field("Outcome Fine Issued").checked = false;
+  syncVehicleLocation();
+}
+
+// A fine and a warning are mutually exclusive outcomes. Ticking Warning
+// puts the fine amount aside; ticking Fine issued brings it back.
+let setAsideAmount = "";
+
+function onWarning(e) {
+  if (!e.target.checked) return;
+  const amount = field("Fine Amount");
+  if (amount.value.trim()) setAsideAmount = amount.value;
+  amount.value = "";
+}
+
+function onFineIssued(e) {
+  const amount = field("Fine Amount");
+  if (!e.target.checked || amount.value.trim()) return;
+  const r = violationMode() === "auto" && fines.get(field("Fine Item").value);
+  amount.value = setAsideAmount || (r ? fineAmount(r) : "");
+}
+
+function markFineIssued() {
+  field("Outcome Fine Issued").checked = true;
+  field("Outcome Warning").checked = false;
+}
+
+function violationMode() {
+  return fines.size && form.elements.namedItem("Violation Mode").value === "manual" ? "manual" : "auto";
+}
+
+// Each mode keeps its own description: switching puts the current one aside
+// and brings back the other mode's. With nothing set aside, the fines list
+// falls back to the chosen violation's text.
+let otherDescription = "";
+
+function switchDescription() {
+  const desc = field("Description of Violation");
+  const r = violationMode() === "auto" && fines.get(field("Fine Item").value);
+  const next = otherDescription || (r ? r.description : "");
+  otherDescription = desc.value;
+  desc.value = next;
+  updateDescHint();
+}
+
+function showViolationMode() {
+  const auto = fines.size > 0 && violationMode() === "auto";
+  $("#cat-mode").hidden = !fines.size;
+  $("#cat-auto").hidden = !auto;
+  $("#cat-manual").hidden = auto;
+  showFineHint();
+}
+
 function pad(n) { return String(n).padStart(2, "0"); }
 
 function fillNow() {
@@ -390,6 +521,8 @@ function applyDefaults() {
   field("Device Code").value = store.get(STORE.deviceCode) || "";
   field("Citation Number").value = nextCitation();
   field("Issued By").value = store.get(STORE.issuedBy) || "";
+  const mode = store.get(STORE.violationMode);
+  if (mode) form.elements.namedItem("Violation Mode").value = mode;
   clearSignatures();
 }
 
@@ -454,10 +587,13 @@ function newCitation() {
   form.reset();
   picked = null;
   autoVehicleLocation = "";
+  setAsideAmount = "";
+  otherDescription = "";
   store.del(STORE.draft);
   applyDefaults();
   onLocationTyped();
   updateDescHint();
+  showViolationMode();
   schedulePdf();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -739,20 +875,35 @@ function wire() {
   }
   // Entering a fine or a deadline ticks the matching outcome.
   field("Fine Amount").addEventListener("input", (e) => {
-    if (e.target.value.trim()) field("Outcome Fine Issued").checked = true;
+    if (e.target.value.trim()) markFineIssued();
   });
   field("Corrective Action Required By").addEventListener("change", (e) => {
     if (e.target.value) field("Outcome Corrective Action Required").checked = true;
   });
-  // Status boxes behave like a single choice.
-  const statuses = ["Status Member", "Status Guest", "Status Contractor", "Status Vendor"];
-  for (const n of statuses) {
-    field(n).addEventListener("change", (e) => {
-      if (e.target.checked) statuses.filter((o) => o !== n).forEach((o) => { field(o).checked = false; });
-    });
+  // Status boxes, and Warning vs Fine issued, behave like a single choice.
+  const singleChoice = [
+    ["Status Member", "Status Guest", "Status Contractor", "Status Vendor"],
+    ["Outcome Warning", "Outcome Fine Issued"],
+  ];
+  for (const group of singleChoice) {
+    for (const n of group) {
+      field(n).addEventListener("change", (e) => {
+        if (e.target.checked) group.filter((o) => o !== n).forEach((o) => { field(o).checked = false; });
+      });
+    }
   }
   for (const n of ["Category Vehicle/Traffic", "Vehicle Make Model", "Vehicle License"]) {
     field(n).addEventListener(n.startsWith("Category") ? "change" : "input", syncVehicleLocation);
+  }
+  field("Outcome Warning").addEventListener("change", onWarning);
+  field("Outcome Fine Issued").addEventListener("change", onFineIssued);
+  field("Fine Item").addEventListener("change", pickFine);
+  for (const el of form.querySelectorAll('[name="Violation Mode"]')) {
+    el.addEventListener("change", () => {
+      store.set(STORE.violationMode, el.value);
+      switchDescription();
+      showViolationMode();
+    });
   }
   setUpSignaturePads();
   field("Description of Violation").addEventListener("input", updateDescHint);
@@ -847,7 +998,14 @@ function start() {
   $("#lock").hidden = true;
   $("#citation").hidden = false;
   $("#lock-btn").hidden = false;
+  // Options must exist before the draft restores the chosen violation.
+  try {
+    if (Vault.has(FINES_PATH) && !fines.size) loadFines(parseCSV(Vault.text(FINES_PATH)));
+  } catch (err) {
+    console.error("Couldn't load the fines list:", err);
+  }
   if (!restoreDraft()) applyDefaults();
+  showViolationMode();
   updateDescHint();
   try {
     loadSites(parseCSV(Vault.text(SITES_PATH)));
