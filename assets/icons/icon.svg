@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Sky and hills run past the edges so the maskable icon can be scaled down without gaps. -->
+  <defs>
+    <linearGradient id="sky" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="512">
+      <stop offset="0" stop-color="#4f5a94"/>
+      <stop offset="1" stop-color="#f7b07c"/>
+    </linearGradient>
+  </defs>
+  <rect x="-140" y="-140" width="792" height="792" fill="url(#sky)"/>
+  <circle cx="420" cy="118" r="44" fill="#ffd27a"/>
+  <!-- Mt. St. Helens -->
+  <path d="M10 372 L226 140 L290 140 L502 372Z" fill="#6c6a8e"/>
+  <path d="M190 179 L226 140 L290 140 L326 179 L300 168 L280 186 L258 166 L236 186 L214 168Z" fill="#fbe3dc"/>
+  <path d="M0 360 Q256 312 512 348 L652 380 V652 H-140 V388Z" fill="#3d7046"/>
+  <path d="M0 420 Q256 386 512 410 L652 432 V652 H-140 V440Z" fill="#2c5a37"/>
+  <g fill="#163f26">
+    <rect x="374" y="400" width="20" height="44"/>
+    <path d="M384 150 L438 250 H410 L454 330 H422 L470 412 H298 L346 330 H314 L358 250 H330Z"/>
+  </g>
+  <g transform="rotate(-7 160 352)">
+    <rect x="68" y="244" width="196" height="232" rx="22" fill="#1f2a36" opacity=".25"/>
+    <rect x="62" y="236" width="196" height="232" rx="22" fill="#fff"/>
+    <path d="M62 290 V258 a22 22 0 0 1 22 -22 H236 a22 22 0 0 1 22 22 V290Z" fill="#d8262e"/>
+    <rect x="88" y="257" width="96" height="13" rx="6.5" fill="#fff"/>
+    <rect x="88" y="312" width="144" height="12" rx="6" fill="#c3cad2"/>
+    <rect x="88" y="338" width="120" height="12" rx="6" fill="#c3cad2"/>
+    <rect x="88" y="364" width="134" height="12" rx="6" fill="#c3cad2"/>
+    <line x1="88" y1="440" x2="232" y2="440" stroke="#c3cad2" stroke-width="5" stroke-linecap="round"/>
+    <path d="M94 430 l12 -22 l10 22 l12 -20 l10 18 l18 -10" fill="none" stroke="#1f2a36" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
